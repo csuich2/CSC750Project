@@ -146,37 +146,41 @@ public class CallLogObserver extends ContentObserver {
 	public static long getNextAvailable(ArrayList<long[]> busy) {
 		int itemCount = busy.size();
 		
-		redoIteration:
-		for(int i= 0; i < itemCount; i++) {
-			for(int j = 0; j < itemCount; j++) {
-				if(i == j) {
-					continue;
-				}
-				
-				if(busy.get(i)[0] <= busy.get(j)[0] && 
-						busy.get(i)[1] >= busy.get(j)[1]) {
-					// i completely contains j
-					busy.remove(j);
+		redoIterations:
+		while(true) {
+			for(int i= 0; i < itemCount; i++) {
+				for(int j = 0; j < itemCount; j++) {
+					if(i == j) {
+						continue;
+					}
 					
-					i -= 1;
-					j -= 1;
-					itemCount -= 1;
-					
-					continue redoIteration;
-				} else if(busy.get(i)[0] <= busy.get(j)[0] && 
-						busy.get(i)[1] >= busy.get(j)[0] &&
-						busy.get(i)[1] <= busy.get(j)[1]) {
-					// overlap/adjacent, starting with i and ending with j
-					busy.get(i)[1] = busy.get(j)[1];
-					busy.remove(j);
-					
-					i -= 1;
-					j -= 1;
-					itemCount -= 1;
-					
-					continue redoIteration;
+					if(busy.get(i)[0] <= busy.get(j)[0] && 
+							busy.get(i)[1] >= busy.get(j)[1]) {
+						// i completely contains j
+						busy.remove(j);
+						
+						i -= 1;
+						j -= 1;
+						itemCount -= 1;
+						
+						continue redoIterations;
+					} else if(busy.get(i)[0] <= busy.get(j)[0] && 
+							busy.get(i)[1] >= busy.get(j)[0] &&
+							busy.get(i)[1] <= busy.get(j)[1]) {
+						// overlap/adjacent, starting with i and ending with j
+						busy.get(i)[1] = busy.get(j)[1];
+						busy.remove(j);
+						
+						i -= 1;
+						j -= 1;
+						itemCount -= 1;
+						
+						continue redoIterations;
+						
+					}
 				}
 			}
+			break;
 		}
 		
 		// we now have a list with no overlaps or adjacents
@@ -184,7 +188,6 @@ public class CallLogObserver extends ContentObserver {
 		long endTimes[] = new long[itemCount];
 		int i = 0;
 		for(long[] period : busy) {
-			Log.v("interactionmanager", "end time: " + period[1]);
 			endTimes[i++] = period[1];
 		}
 		
