@@ -21,7 +21,7 @@ public class StartServiceActivity extends Activity {
 		settingsButton.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				
+				startActivity(new Intent(StartServiceActivity.this, SettingsActivity.class));
 			}
 		});
 	}

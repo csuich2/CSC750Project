@@ -16,6 +16,6 @@
         android:id="@+id/buttonSettings"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/settings" />
+        android:text="@string/title_activity_settings" />
 
 </LinearLayout>
