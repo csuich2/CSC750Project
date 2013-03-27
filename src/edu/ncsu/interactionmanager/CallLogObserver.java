@@ -1,6 +1,7 @@
 package edu.ncsu.interactionmanager;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
@@ -182,5 +183,55 @@ public class CallLogObserver extends ContentObserver {
 		String name;
 		int type;
 		String isNew;
+	}
+	
+	public static long getNextAvailable(ArrayList<long[]> busy) {
+		int itemCount = busy.size();
+		
+		redoIteration:
+		for(int i= 0; i < itemCount; i++) {
+			for(int j = 0; j < itemCount; j++) {
+				if(i == j) {
+					continue;
+				}
+				
+				if(busy.get(i)[0] <= busy.get(j)[0] && 
+						busy.get(i)[1] >= busy.get(j)[1]) {
+					// i completely contains j
+					busy.remove(j);
+					
+					i -= 1;
+					j -= 1;
+					itemCount -= 1;
+					
+					continue redoIteration;
+				} else if(busy.get(i)[0] <= busy.get(j)[0] && 
+						busy.get(i)[1] >= busy.get(j)[0] &&
+						busy.get(i)[1] <= busy.get(j)[1]) {
+					// overlap/adjacent, starting with i and ending with j
+					busy.get(i)[1] = busy.get(j)[1];
+					busy.remove(j);
+					
+					i -= 1;
+					j -= 1;
+					itemCount -= 1;
+					
+					continue redoIteration;
+				}
+			}
+		}
+		
+		// we now have a list with no overlaps or adjacents
+		
+		long endTimes[] = new long[itemCount];
+		int i = 0;
+		for(long[] period : busy) {
+			Log.v("interactionmanager", "end time: " + period[1]);
+			endTimes[i++] = period[1];
+		}
+		
+		Arrays.sort(endTimes);
+		return endTimes[0];
+		
 	}
 }
