@@ -6,6 +6,7 @@ import android.preference.MultiSelectListPreference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceFragment;
 import android.provider.CalendarContract;
+import android.provider.CalendarContract.Calendars;
 import android.provider.ContactsContract;
 
 /**
@@ -79,21 +80,25 @@ public class SettingsActivity extends PreferenceActivity {
 			
 			// Load the list of calendars
 			String[] projection2 = {
-					CalendarContract.Calendars._ID,
-					CalendarContract.Calendars.NAME,
+					Calendars._ID,
+					Calendars.NAME,
+					Calendars.ACCOUNT_NAME,
 			};
-			Cursor c2 = getActivity().getContentResolver().query(
-					CalendarContract.Calendars.CONTENT_URI,
+			c = getActivity().getContentResolver().query(
+					Calendars.CONTENT_URI,
 					projection2,
 					null, null, null);
-			entries = new CharSequence[c2.getCount()];
-			entryValues = new CharSequence[c2.getCount()];
-			while (c2.moveToNext()) {
-				entries[i] = c.getString(c.getColumnIndex(CalendarContract.Calendars.NAME));
-				entryValues[i] = c.getString(c.getColumnIndex(CalendarContract.Calendars._ID));
+			entries = new CharSequence[c.getCount()];
+			entryValues = new CharSequence[c.getCount()];
+			i=0;
+			while (c.moveToNext()) {
+				entries[i] = c.getString(c.getColumnIndex(Calendars.NAME));
+				if (entries[i]==null)
+					entries[i] = c.getString(c.getColumnIndex(Calendars.ACCOUNT_NAME));
+				entryValues[i] = c.getString(c.getColumnIndex(Calendars._ID));
 				i++;
 			}
-			c2.close();
+			c.close();
 			
 			selectCalendarsList = (MultiSelectListPreference)findPreference("SchedulingCalendars");
 			if (entries.length!=0) {

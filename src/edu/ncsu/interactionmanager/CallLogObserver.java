@@ -2,8 +2,9 @@ package edu.ncsu.interactionmanager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.HashSet;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 
 import android.content.Context;
@@ -13,6 +14,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Handler;
 import android.preference.PreferenceManager;
+import android.provider.CalendarContract;
 import android.provider.CallLog;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.PhoneLookup;
@@ -69,6 +71,13 @@ public class CallLogObserver extends ContentObserver {
 						if (set.contains(""+groupId)) {
 							Toast.makeText(context, "Last caller is in important group '"+groupId+"'", Toast.LENGTH_SHORT).show();
 						} else {
+							Cursor c4 = getCalendarEventsCursor(prefs);
+							List<long[]> timePairs = new ArrayList<long[]>();
+							while (c4.moveToNext()) {
+								long[] timePair = {c4.getLong(c4.getColumnIndex(CalendarContract.Events.DTSTART)), c4.getLong(c4.getColumnIndex(CalendarContract.Events.DTEND))};
+								timePairs.add(timePair);
+								Log.i("Calendar event:", "ID: "+c4.getLong(c4.getColumnIndex(CalendarContract.Events._ID))+", Start: "+c4.getLong(c4.getColumnIndex(CalendarContract.Events.DTSTART)));
+							}
 							Toast.makeText(context, "Last caller is NOT in an important group", Toast.LENGTH_SHORT).show();
 						}
 					} else {
@@ -120,6 +129,39 @@ public class CallLogObserver extends ContentObserver {
 				null, null);
 	}
 	
+	private Cursor getCalendarEventsCursor(SharedPreferences prefs) {
+		String[] projection = {
+			CalendarContract.Events._ID,
+			CalendarContract.Events.CALENDAR_ID,
+			CalendarContract.Events.DTSTART,
+			CalendarContract.Events.DTEND,
+		};
+		String selection = null;
+		Set<String> calendars = prefs.getStringSet(SettingsActivity.CALENDARS_KEY, new HashSet<String>());
+		if (calendars.size()!=0) {
+			selection = CalendarContract.Events.CALENDAR_ID + " in ";
+			String temp = "(";
+			for (String calendar : calendars)
+				temp += calendar+", ";
+			temp = temp.substring(0, temp.length()-2);
+			temp += ")";
+			selection += temp;
+			Calendar min = Calendar.getInstance();
+			min.set(Calendar.HOUR_OF_DAY, 17);
+			min.set(Calendar.MINUTE, 0);
+			Calendar max = Calendar.getInstance();
+			max.set(Calendar.HOUR_OF_DAY, 23);
+			max.set(Calendar.MINUTE, 59);
+			max.set(Calendar.MILLISECOND, 999);
+			selection += " AND (" + CalendarContract.Events.DTSTART  + " BETWEEN " + Math.max(System.currentTimeMillis(), min.getTimeInMillis()) + " AND " + max.getTimeInMillis();
+			selection += " OR " + CalendarContract.Events.DTEND  + " BETWEEN " + Math.max(System.currentTimeMillis(), min.getTimeInMillis()) + " AND " + max.getTimeInMillis() + ")";
+		}
+		return context.getContentResolver().query(
+				CalendarContract.Events.CONTENT_URI,
+				projection,
+				selection, null, null);
+	}
+
 	private Call callFromCursor(Cursor c) {
 		Call call = new Call();
 		call.number = c.getString(c.getColumnIndex(CallLog.Calls.NUMBER));
