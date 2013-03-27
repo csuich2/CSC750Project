@@ -40,6 +40,13 @@
             android:name="edu.ncsu.interactionmanager.SettingsActivity"
             android:label="@string/title_activity_settings" >
         </activity>
+        
+        <activity
+            android:name="edu.ncsu.interactionmanager.Notifier">
+            <intent-filter>
+                <action android:name="edu.ncsu.interactionmanager.NOTIFY" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>
