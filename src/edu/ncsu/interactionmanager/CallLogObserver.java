@@ -19,12 +19,11 @@ import android.provider.CallLog;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.PhoneLookup;
 import android.util.Log;
-import android.widget.Toast;
 
 public class CallLogObserver extends ContentObserver {
 	
 	Context context;
-	long lastUpdate;
+	static long lastUpdate;
 
 	public CallLogObserver(Handler handler, Context context) {
 		super(handler);
@@ -37,12 +36,13 @@ public class CallLogObserver extends ContentObserver {
 	 */
 
 	@Override
-	public void onChange(boolean selfChange) {
+	public synchronized void onChange(boolean selfChange) {
 		super.onChange(selfChange);
 		
 		// Only let us update every second
-		if (lastUpdate + 1000 > System.currentTimeMillis())
+		if (lastUpdate + 10000 > System.currentTimeMillis())
 			return;
+		lastUpdate = System.currentTimeMillis();
 		
 		// Get the latest call
 		Cursor c = getCallLogCursor();
@@ -51,7 +51,7 @@ public class CallLogObserver extends ContentObserver {
 			// Populate a helper class from the cursor
 			Call call = callFromCursor(c);
 			// If this call is a missed call
-			if (call.type == CallLog.Calls.MISSED_TYPE) {
+			if (call.type == CallLog.Calls.MISSED_TYPE && call.isNew==1) {
 				// Lookup the contact id for the missed call
 				Cursor c2 = getPhoneLookupCursor(call);
 				// If we found a contact for the missed call
@@ -63,14 +63,20 @@ public class CallLogObserver extends ContentObserver {
 					// If we found a group id
 					if (c3.moveToFirst()) {
 						// Get the group id
-						long groupId = c3.getLong(c3.getColumnIndex(ContactsContract.Groups._ID));
+						long groupId = c3.getLong(c3.getColumnIndex(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID));
+						//Log.i("group_row_id", ""+c3.getLong(c3.getColumnIndex(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID)));
 						// Get the list of important groups
 						SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
 						Set<String>set = prefs.getStringSet(SettingsActivity.GROUPS_KEY, new HashSet<String>());
-						// If the caller's group 
+						// If the caller's group is marked as important, send the notification now
 						if (set.contains(""+groupId)) {
-							Toast.makeText(context, "Last caller is in important group '"+groupId+"'", Toast.LENGTH_SHORT).show();
+							Log.i("CallLogObserver: ", "Last caller is in important group '"+groupId+"'");
+							Log.i("CallLogObserver: ", "Notifying immediately");
+							Notifier.notifyNow(context, call);
+						// Otherwise, find a time slot in their calendar when they are available between
+						// 5pm and midnight today. If there is not a time slot, just choose 6:30pm
 						} else {
+							Log.i("CallLogObserver: ", "Last caller is NOT in an important group");
 							Cursor c4 = getCalendarEventsCursor(prefs);
 							List<long[]> timePairs = new ArrayList<long[]>();
 							while (c4.moveToNext()) {
@@ -78,22 +84,34 @@ public class CallLogObserver extends ContentObserver {
 								timePairs.add(timePair);
 								Log.i("Calendar event:", "ID: "+c4.getLong(c4.getColumnIndex(CalendarContract.Events._ID))+", Start: "+c4.getLong(c4.getColumnIndex(CalendarContract.Events.DTSTART)));
 							}
-							Toast.makeText(context, "Last caller is NOT in an important group", Toast.LENGTH_SHORT).show();
+							long notificationTime = getNextAvailable(timePairs);
+							Calendar max = Calendar.getInstance();
+							max.set(Calendar.HOUR_OF_DAY, 23);
+							max.set(Calendar.MINUTE, 59);
+							max.set(Calendar.MILLISECOND, 999);
+							if (notificationTime > max.getTimeInMillis()) {
+								Calendar time = Calendar.getInstance();
+								time.set(Calendar.HOUR_OF_DAY, 18);
+								time.set(Calendar.MINUTE, 30);
+								time.set(Calendar.SECOND, 0);
+								time.set(Calendar.MILLISECOND, 0);
+								notificationTime = time.getTimeInMillis();
+							}
+							Notifier.notifyLater(context, notificationTime, call);
+							Log.i("CallLogObserver: ", "Notifying at UNIX time '"+notificationTime+"'");
 						}
 					} else {
-						Toast.makeText(context, "Unable to find group id off last caller", Toast.LENGTH_SHORT).show();
+						Log.i("CallLogObserver: ", "Unable to find group id off last caller");
 					}
 				} else {
-					Toast.makeText(context, "Unable to determine if last caller is in a group", Toast.LENGTH_SHORT).show();
+					Log.i("CallLogObserver: ", "Unable to determine if last caller is in a group");
 				}
 			}
 			
 			Log.i("Last call info", buildCallLogString(c));
 		} else {
-			Toast.makeText(context, "Unable to get last call log item", Toast.LENGTH_SHORT).show();
+			Log.i("CallLogObserver: ", "Unable to get last call log item");
 		}
-		
-		lastUpdate = System.currentTimeMillis();
 	}
 	
 	private Cursor getCallLogCursor() {
@@ -102,6 +120,7 @@ public class CallLogObserver extends ContentObserver {
 				CallLog.Calls.CACHED_NAME,
 				CallLog.Calls.TYPE,
 				CallLog.Calls.NEW,
+				CallLog.Calls.DATE,
 		};
 		String order = CallLog.Calls.DATE + " DESC";
 		
@@ -124,8 +143,8 @@ public class CallLogObserver extends ContentObserver {
 	private Cursor getGroupIdCursor(long contactId) {
 		return context.getContentResolver().query(
 				ContactsContract.Data.CONTENT_URI,
-				new String[]{ContactsContract.Data.CONTACT_ID , ContactsContract.Groups._ID},
-				ContactsContract.Data.CONTACT_ID+"="+contactId,
+				new String[]{ContactsContract.Data.RAW_CONTACT_ID, ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID},
+				ContactsContract.Data.RAW_CONTACT_ID+"="+contactId+" AND "+ContactsContract.Data.MIMETYPE+"='"+ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE+"'",
 				null, null);
 	}
 	
@@ -149,9 +168,11 @@ public class CallLogObserver extends ContentObserver {
 			Calendar min = Calendar.getInstance();
 			min.set(Calendar.HOUR_OF_DAY, 17);
 			min.set(Calendar.MINUTE, 0);
+			min.set(Calendar.SECOND, 0);
 			Calendar max = Calendar.getInstance();
 			max.set(Calendar.HOUR_OF_DAY, 23);
 			max.set(Calendar.MINUTE, 59);
+			max.set(Calendar.SECOND, 59);
 			max.set(Calendar.MILLISECOND, 999);
 			selection += " AND (" + CalendarContract.Events.DTSTART  + " BETWEEN " + Math.max(System.currentTimeMillis(), min.getTimeInMillis()) + " AND " + max.getTimeInMillis();
 			selection += " OR " + CalendarContract.Events.DTEND  + " BETWEEN " + Math.max(System.currentTimeMillis(), min.getTimeInMillis()) + " AND " + max.getTimeInMillis() + ")";
@@ -167,7 +188,8 @@ public class CallLogObserver extends ContentObserver {
 		call.number = c.getString(c.getColumnIndex(CallLog.Calls.NUMBER));
 		call.name = c.getString(c.getColumnIndex(CallLog.Calls.CACHED_NAME));
 		call.type = c.getInt(c.getColumnIndex(CallLog.Calls.TYPE));
-		call.isNew = c.getString(c.getColumnIndex(CallLog.Calls.NEW));
+		call.isNew = c.getInt(c.getColumnIndex(CallLog.Calls.NEW));
+		call.time = c.getLong(c.getColumnIndex(CallLog.Calls.DATE));
 		return call;
 	}
 	
@@ -178,14 +200,7 @@ public class CallLogObserver extends ContentObserver {
 				"New: "+c.getString(c.getColumnIndex(CallLog.Calls.NEW));
 	}
 	
-	private class Call {
-		String number;
-		String name;
-		int type;
-		String isNew;
-	}
-	
-	public static long getNextAvailable(ArrayList<long[]> busy) {
+	private static long getNextAvailable(List<long[]> busy) {
 		int itemCount = busy.size();
 		
 		redoIterations:
